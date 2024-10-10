@@ -5,19 +5,17 @@
 package opencveplore;
 
 import java.awt.Image;
-import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
-import java.awt.image.ImageFilter;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.text.NumberFormat;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
-import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
-import javax.swing.filechooser.FileFilter;
+import javax.swing.JOptionPane;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
@@ -25,6 +23,9 @@ import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
+import org.opencv.dnn.Dnn;
+import org.opencv.dnn.Net;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
@@ -40,20 +41,19 @@ public class MainFrame extends javax.swing.JFrame {
      * Creates new form MainFrame
      */
     String imageSrc = "";
+    String imageDest = "";
+
+    boolean takeImage = false;
+
+    String trainingModel = "training-models/haarcascades/haarcascade_frontalface_alt.xml";
 
     public MainFrame() {
         initComponents();
+
     }
 
-    private Image loadImage(String imgPath) {
-        ImageIcon icon = new ImageIcon(imageSrc);
-        Image img = icon.getImage();
-        Image newSizeImage = img.getScaledInstance(350, 400, Image.SCALE_AREA_AVERAGING);
-        return newSizeImage;
-    }
-
-    private Image faceDetection(String sourceImage) throws IOException {
-        CascadeClassifier faceDetector = new CascadeClassifier("lbpcascade_frontalface.xml");
+    private Image faceDetection(String sourceImage, boolean isCropped) {
+        CascadeClassifier faceDetector = new CascadeClassifier(trainingModel);
         Mat image = Imgcodecs.imread(sourceImage);
 
         MatOfRect face = new MatOfRect();
@@ -61,21 +61,31 @@ public class MainFrame extends javax.swing.JFrame {
 
         Rect[] recArr = face.toArray();
 
+        Rect rectCrop = null;
         for (Rect rect : recArr) {
             int x = rect.x;
             int y = rect.y;
             int height = rect.height;
             int width = rect.width;
+            Imgproc.rectangle(image, new Point(x, y), new Point(x + width, y + height), new Scalar(0, 0, 0), 0);
+            rectCrop = new Rect(x, y, width, height);
 
-            Imgproc.rectangle(image, new Point(x, y), new Point(x + width, y + height), new Scalar(255, 0, 255), 3);
+        }
 
+        if (isCropped) {
+            image = new Mat(image, rectCrop);
         }
 
         MatOfByte mob = new MatOfByte();
         Imgcodecs.imencode(".jpg", image, mob);
         byte ba[] = mob.toArray();
 
-        BufferedImage brimage = ImageIO.read(new ByteArrayInputStream(ba));
+        BufferedImage brimage = null;
+        try {
+            brimage = ImageIO.read(new ByteArrayInputStream(ba));
+        } catch (IOException ex) {
+            Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
+        }
         Image im = brimage.getScaledInstance(350, 400, Image.SCALE_AREA_AVERAGING);
         return im;
 
@@ -95,8 +105,9 @@ public class MainFrame extends javax.swing.JFrame {
         jLabel1 = new javax.swing.JLabel();
         jPanel2 = new javax.swing.JPanel();
         jLabel2 = new javax.swing.JLabel();
-        jButton2 = new javax.swing.JButton();
         jButton3 = new javax.swing.JButton();
+        jButton4 = new javax.swing.JButton();
+        jButton5 = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -108,6 +119,12 @@ public class MainFrame extends javax.swing.JFrame {
         });
 
         jPanel1.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(102, 102, 102)));
+
+        jLabel1.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                jLabel1MouseClicked(evt);
+            }
+        });
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
@@ -132,30 +149,31 @@ public class MainFrame extends javax.swing.JFrame {
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel2Layout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addContainerGap())
+            .addComponent(jLabel2, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, 394, Short.MAX_VALUE)
         );
         jPanel2Layout.setVerticalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel2Layout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, 436, Short.MAX_VALUE)
-                .addContainerGap())
+            .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, 388, Short.MAX_VALUE)
         );
 
-        jButton2.setText("Detect face");
-        jButton2.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButton2ActionPerformed(evt);
-            }
-        });
-
-        jButton3.setText("Video Capture");
+        jButton3.setText("Cam Capture");
         jButton3.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 jButton3ActionPerformed(evt);
+            }
+        });
+
+        jButton4.setText("Compare");
+        jButton4.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton4ActionPerformed(evt);
+            }
+        });
+
+        jButton5.setText("Load Image");
+        jButton5.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton5ActionPerformed(evt);
             }
         });
 
@@ -165,17 +183,20 @@ public class MainFrame extends javax.swing.JFrame {
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(layout.createSequentialGroup()
-                        .addComponent(jButton1, javax.swing.GroupLayout.PREFERRED_SIZE, 179, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jButton3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jPanel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jButton2, javax.swing.GroupLayout.DEFAULT_SIZE, 388, Short.MAX_VALUE))
-                .addContainerGap())
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                            .addComponent(jPanel1, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(jButton1, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(jButton5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(jPanel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(jButton4)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jButton3)))
+                .addContainerGap(32, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -187,9 +208,12 @@ public class MainFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jButton1)
-                    .addComponent(jButton2)
+                    .addComponent(jButton5))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jButton4)
                     .addComponent(jButton3))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addContainerGap(46, Short.MAX_VALUE))
         );
 
         pack();
@@ -201,52 +225,59 @@ public class MainFrame extends javax.swing.JFrame {
         if (option == JFileChooser.APPROVE_OPTION) {
             imageSrc = chooser.getSelectedFile().getAbsolutePath();
         }
-        ImageIcon imgIcon = new ImageIcon(loadImage(imageSrc));
+        ImageIcon imgIcon = new ImageIcon(faceDetection(imageSrc, false));
         jLabel1.setIcon(imgIcon);
-
-
     }//GEN-LAST:event_jButton1ActionPerformed
-
-    private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
-        try {
-            ImageIcon imgIcon = new ImageIcon(faceDetection(imageSrc));
-            jLabel2.setIcon(imgIcon);
-        } catch (IOException ex) {
-            Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
 
         Executors.newSingleThreadExecutor().execute(() -> {
-
             VideoCapture vc = new VideoCapture(0);
             Mat matFrame = new Mat();
             byte[] imageData;
+            Mat matImg2 = getCroppedFace(Imgcodecs.imread(imageDest));
+            Scalar red = new Scalar(0, 0, 255);
+            Scalar blue = new Scalar(255, 0, 0);
+            Scalar green = new Scalar(0, 255, 0);
 
             while (true) {
                 try {
-                    CascadeClassifier faceDetector = new CascadeClassifier("lbpcascade_frontalface.xml");
+                    CascadeClassifier faceDetector = new CascadeClassifier(trainingModel);
                     vc.read(matFrame);
-                    
-                    
-                    
-                     MatOfRect face = new MatOfRect();
+
+                    MatOfRect face = new MatOfRect();
                     faceDetector.detectMultiScale(matFrame, face);
 
                     Rect[] recArr = face.toArray();
 
+                    Rect rectCrop = null;
                     for (Rect rect : recArr) {
                         int x = rect.x;
                         int y = rect.y;
                         int height = rect.height;
                         int width = rect.width;
 
-                        Imgproc.rectangle(matFrame, new Point(x, y), new Point(x + width, y + height), new Scalar(255, 0, 255), 3);
+                        rectCrop = new Rect(x, y, width, height);
+                        Mat imageCrop = new Mat(matFrame, rectCrop);
+
+                        double resultCompare = Core.norm(get4dMat(imageCrop), get4dMat(matImg2));
+
+                        NumberFormat nf = NumberFormat.getInstance();
+                        double percentage = 100 - (resultCompare * 100);
+                        String status = nf.format(percentage);
+
+                        Scalar currentColor = red;
+                         if (percentage > 70) {
+                            currentColor = green;
+                        }else if (percentage <= 70 && percentage >= 40) {
+                            currentColor = blue;
+                        }else if(percentage < 40){
+                            currentColor = red;
+                        }
+                        Imgproc.putText(matFrame, status, new Point(x + 50, y - 10), Imgproc.FONT_HERSHEY_PLAIN, 2, new Scalar(0, 255, 0));
+                        Imgproc.rectangle(matFrame, new Point(x, y), new Point(x + width, y + height), currentColor, 1);
 
                     }
-                    
-                    
 
                     MatOfByte mob = new MatOfByte();
                     Imgcodecs.imencode(".jpg", matFrame, mob);
@@ -255,6 +286,7 @@ public class MainFrame extends javax.swing.JFrame {
                     BufferedImage brimage = ImageIO.read(new ByteArrayInputStream(imageData));
                     Image im = brimage.getScaledInstance(400, 400, Image.SCALE_AREA_AVERAGING);
                     jLabel1.setIcon(new ImageIcon(im));
+
                 } catch (IOException ex) {
                     Logger.getLogger(MainFrame.class.getName()).log(Level.SEVERE, null, ex);
                 }
@@ -264,6 +296,66 @@ public class MainFrame extends javax.swing.JFrame {
 
 
     }//GEN-LAST:event_jButton3ActionPerformed
+
+    private void jLabel1MouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_jLabel1MouseClicked
+        takeImage = true;
+    }//GEN-LAST:event_jLabel1MouseClicked
+
+    private void jButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton4ActionPerformed
+        // TODO add your handling code here:
+        NumberFormat nf = NumberFormat.getInstance();
+
+        Mat matImg1 = getCroppedFace(Imgcodecs.imread(imageSrc));
+        Mat matImg2 = getCroppedFace(Imgcodecs.imread(imageDest));
+
+        double resultCompare = Core.norm(get4dMat(matImg1), get4dMat(matImg2));
+
+        double percentage = 100 - (resultCompare * 100);
+
+        JOptionPane.showMessageDialog(null, nf.format(percentage) + "%");
+    }//GEN-LAST:event_jButton4ActionPerformed
+
+    private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
+        JFileChooser chooser = new JFileChooser();
+        int option = chooser.showOpenDialog(this);
+        if (option == JFileChooser.APPROVE_OPTION) {
+            imageDest = chooser.getSelectedFile().getAbsolutePath();
+        }
+        ImageIcon imgIcon = new ImageIcon(faceDetection(imageDest, false));
+        jLabel2.setIcon(imgIcon);
+    }//GEN-LAST:event_jButton5ActionPerformed
+
+    private Mat get4dMat(Mat imageMat) {
+        Net net = Dnn.readNetFromTorch("training-models/nn4.small2.v1.t7");
+        Mat matProc = Dnn.blobFromImage(imageMat, 1.0 / 255, new Size(90, 90), new Scalar(0, 0, 0), true, false);
+        net.setInput(matProc);
+        Mat resMat = net.forward().clone();
+        return resMat;
+
+    }
+
+    private Mat getCroppedFace(Mat imageMat) {
+        CascadeClassifier faceDetector = new CascadeClassifier(trainingModel);
+
+        MatOfRect face = new MatOfRect();
+        faceDetector.detectMultiScale(imageMat, face);
+
+        Rect[] recArr = face.toArray();
+
+        Rect rectCrop = null;
+        for (Rect rect : recArr) {
+            int x = rect.x;
+            int y = rect.y;
+            int height = rect.height;
+            int width = rect.width;
+            //Imgproc.rectangle(imageMat, new Point(x, y), new Point(x + width, y + height), new Scalar(0, 0, 0), 0);
+            rectCrop = new Rect(x, y, width, height);
+
+        }
+
+        Mat imageCrop = new Mat(imageMat, rectCrop);
+        return imageCrop;
+    }
 
     /**
      * @param args the command line arguments
@@ -302,8 +394,9 @@ public class MainFrame extends javax.swing.JFrame {
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton jButton1;
-    private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
+    private javax.swing.JButton jButton4;
+    private javax.swing.JButton jButton5;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JPanel jPanel1;
